@@ -1,18 +1,38 @@
 # Configure the Amazon AWS Provider
 provider "aws" {
-  access_key = var.aws_access_key
-  secret_key = var.aws_secret_key
-  region     = var.region
+  # assume_role {
+  #   role_arn = var.aws_assume_role_arn
+  # }
+
+  # profile                 = var.aws_profile
+  # shared_credentials_file = var.aws_cred_file
+  region  = var.aws_region
+  version = "~> 2.44"
 }
 
-variable "aws_access_key" {
-  default     = "xxx"
-  description = "Amazon AWS Access Key"
+provider "template" {
+  version = "~> 2.1"
 }
 
-variable "aws_secret_key" {
-  default     = "xxx"
-  description = "Amazon AWS Secret Key"
+variable "aws_assume_role_arn" {
+}
+
+variable "aws_profile" {
+}
+
+variable "aws_cred_file" {
+}
+
+variable "vpc_id" {
+}
+
+variable "vpc_cidr" {
+}
+
+variable "public_subnet" {
+}
+
+variable "ssh_cidr_range" {
 }
 
 variable "prefix" {
@@ -55,7 +75,7 @@ variable "cluster_name" {
   description = "Kubernetes Cluster Name"
 }
 
-variable "region" {
+variable "aws_region" {
   default     = "us-west-2"
   description = "Amazon AWS Region for deployment"
 }
@@ -96,13 +116,36 @@ data "aws_ami" "ubuntu" {
 }
 
 resource "aws_security_group" "rancher_sg_allowall" {
-  name = "${var.prefix}-allowall"
+  name        = "${var.prefix}-rancher-allowall"
+  description = "${var.prefix}-rancher-allowall"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    from_port   = "22"
+    to_port     = "22"
+    protocol    = "tcp"
+    cidr_blocks = [var.ssh_cidr_range]
+  }
+
+  ingress {
+    from_port   = "80"
+    to_port     = "80"
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = "443"
+    to_port     = "443"
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 
   ingress {
     from_port   = "0"
     to_port     = "0"
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = [var.vpc_cidr]
   }
 
   egress {
@@ -110,6 +153,10 @@ resource "aws_security_group" "rancher_sg_allowall" {
     to_port     = "0"
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "${var.prefix}-rancher-allowall_sg"
   }
 }
 
@@ -126,11 +173,13 @@ data "template_cloudinit_config" "rancherserver-cloudinit" {
 }
 
 resource "aws_instance" "rancherserver" {
-  ami             = data.aws_ami.ubuntu.id
-  instance_type   = var.type
-  key_name        = var.ssh_key_name
-  security_groups = [aws_security_group.rancher_sg_allowall.name]
-  user_data       = data.template_cloudinit_config.rancherserver-cloudinit.rendered
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = var.type
+  key_name                    = var.ssh_key_name
+  vpc_security_group_ids      = [aws_security_group.rancher_sg_allowall.id]
+  subnet_id                   = var.public_subnet
+  associate_public_ip_address = "true"
+  user_data                   = data.template_cloudinit_config.rancherserver-cloudinit.rendered
 
   tags = {
     Name = "${var.prefix}-rancherserver"
@@ -152,12 +201,14 @@ data "template_cloudinit_config" "rancheragent-all-cloudinit" {
 }
 
 resource "aws_instance" "rancheragent-all" {
-  count           = var.count_agent_all_nodes
-  ami             = data.aws_ami.ubuntu.id
-  instance_type   = var.type
-  key_name        = var.ssh_key_name
-  security_groups = [aws_security_group.rancher_sg_allowall.name]
-  user_data       = data.template_cloudinit_config.rancheragent-all-cloudinit[count.index].rendered
+  count                       = var.count_agent_all_nodes
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = var.type
+  key_name                    = var.ssh_key_name
+  vpc_security_group_ids      = [aws_security_group.rancher_sg_allowall.id]
+  subnet_id                   = var.public_subnet
+  associate_public_ip_address = "true"
+  user_data                   = data.template_cloudinit_config.rancheragent-all-cloudinit[count.index].rendered
 
   tags = {
     Name = "${var.prefix}-rancheragent-${count.index}-all"
@@ -179,12 +230,14 @@ data "template_cloudinit_config" "rancheragent-etcd-cloudinit" {
 }
 
 resource "aws_instance" "rancheragent-etcd" {
-  count           = var.count_agent_etcd_nodes
-  ami             = data.aws_ami.ubuntu.id
-  instance_type   = var.type
-  key_name        = var.ssh_key_name
-  security_groups = [aws_security_group.rancher_sg_allowall.name]
-  user_data       = data.template_cloudinit_config.rancheragent-etcd-cloudinit[count.index].rendered
+  count                       = var.count_agent_etcd_nodes
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = var.type
+  key_name                    = var.ssh_key_name
+  vpc_security_group_ids      = [aws_security_group.rancher_sg_allowall.id]
+  subnet_id                   = var.public_subnet
+  associate_public_ip_address = "true"
+  user_data                   = data.template_cloudinit_config.rancheragent-etcd-cloudinit[count.index].rendered
 
   tags = {
     Name = "${var.prefix}-rancheragent-${count.index}-etcd"
@@ -206,12 +259,14 @@ data "template_cloudinit_config" "rancheragent-controlplane-cloudinit" {
 }
 
 resource "aws_instance" "rancheragent-controlplane" {
-  count           = var.count_agent_controlplane_nodes
-  ami             = data.aws_ami.ubuntu.id
-  instance_type   = var.type
-  key_name        = var.ssh_key_name
-  security_groups = [aws_security_group.rancher_sg_allowall.name]
-  user_data       = data.template_cloudinit_config.rancheragent-controlplane-cloudinit[count.index].rendered
+  count                       = var.count_agent_controlplane_nodes
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = var.type
+  key_name                    = var.ssh_key_name
+  vpc_security_group_ids      = [aws_security_group.rancher_sg_allowall.id]
+  subnet_id                   = var.public_subnet
+  associate_public_ip_address = "true"
+  user_data                   = data.template_cloudinit_config.rancheragent-controlplane-cloudinit[count.index].rendered
 
   tags = {
     Name = "${var.prefix}-rancheragent-${count.index}-controlplane"
@@ -233,12 +288,14 @@ data "template_cloudinit_config" "rancheragent-worker-cloudinit" {
 }
 
 resource "aws_instance" "rancheragent-worker" {
-  count           = var.count_agent_worker_nodes
-  ami             = data.aws_ami.ubuntu.id
-  instance_type   = var.type
-  key_name        = var.ssh_key_name
-  security_groups = [aws_security_group.rancher_sg_allowall.name]
-  user_data       = data.template_cloudinit_config.rancheragent-worker-cloudinit[count.index].rendered
+  count                       = var.count_agent_worker_nodes
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = var.type
+  key_name                    = var.ssh_key_name
+  vpc_security_group_ids      = [aws_security_group.rancher_sg_allowall.id]
+  subnet_id                   = var.public_subnet
+  associate_public_ip_address = "true"
+  user_data                   = data.template_cloudinit_config.rancheragent-worker-cloudinit[count.index].rendered
 
   tags = {
     Name = "${var.prefix}-rancheragent-${count.index}-worker"

@@ -13,7 +13,7 @@ node:
 ip:
   master: 172.22.101.100
   server: 172.22.101.101
-  node:   172.22.101.111
+  node: 172.22.101.111
 linked_clones: true
 net:
   private_nic_type: 82545EM

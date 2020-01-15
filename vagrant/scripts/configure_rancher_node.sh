@@ -4,10 +4,10 @@ admin_password=${2:-password}
 curlimage="appropriate/curl"
 jqimage="stedolan/jq"
 
-agent_ip=`ip addr show eth1 | grep "inet\b" | awk '{print $2}' | cut -d/ -f1`
+agent_ip=$(ip addr show eth1 | grep "inet\b" | awk '{print $2}' | cut -d/ -f1)
 
 for image in $curlimage $jqimage; do
-  until docker inspect $image > /dev/null 2>&1; do
+  until docker inspect $image >/dev/null 2>&1; do
     docker pull $image
     sleep 2
   done
@@ -21,17 +21,17 @@ done
 # Login
 while true; do
 
-    LOGINRESPONSE=$(docker run \
-        --rm \
-        $curlimage \
-        -s "https://$rancher_server_ip/v3-public/localProviders/local?action=login" -H 'content-type: application/json' --data-binary '{"username":"admin","password":"'$admin_password'"}' --insecure)
-    LOGINTOKEN=$(echo $LOGINRESPONSE | docker run --rm -i $jqimage -r .token)
+  LOGINRESPONSE=$(docker run \
+    --rm \
+    $curlimage \
+    -s "https://$rancher_server_ip/v3-public/localProviders/local?action=login" -H 'content-type: application/json' --data-binary '{"username":"admin","password":"'$admin_password'"}' --insecure)
+  LOGINTOKEN=$(echo $LOGINRESPONSE | docker run --rm -i $jqimage -r .token)
 
-    if [ "$LOGINTOKEN" != "null" ]; then
-        break
-    else
-        sleep 5
-    fi
+  if [ "$LOGINTOKEN" != "null" ]; then
+    break
+  else
+    sleep 5
+  fi
 done
 
 # Test if cluster is created
@@ -39,9 +39,9 @@ while true; do
   CLUSTERID=$(docker run \
     --rm \
     $curlimage \
-      -sLk \
-      -H "Authorization: Bearer $LOGINTOKEN" \
-      "https://$rancher_server_ip/v3/clusters?name=quickstart" | docker run --rm -i $jqimage -r '.data[].id')
+    -sLk \
+    -H "Authorization: Bearer $LOGINTOKEN" \
+    "https://$rancher_server_ip/v3/clusters?name=quickstart" | docker run --rm -i $jqimage -r '.data[].id')
 
   if [ -n "$CLUSTERID" ]; then
     break
@@ -50,7 +50,7 @@ while true; do
   fi
 done
 
-if [ `hostname` == "node-01" ]; then
+if [ $(hostname) == "node-01" ]; then
   ROLEFLAGS="--etcd --controlplane --worker"
 else
   #ROLEFLAGS="--worker"
@@ -63,9 +63,9 @@ while true; do
   AGENTCMD=$(docker run \
     --rm \
     $curlimage \
-      -sLk \
-      -H "Authorization: Bearer $LOGINTOKEN" \
-      "https://$rancher_server_ip/v3/clusterregistrationtoken?clusterId=$CLUSTERID" | docker run --rm -i $jqimage -r '.data[].nodeCommand' | head -1)
+    -sLk \
+    -H "Authorization: Bearer $LOGINTOKEN" \
+    "https://$rancher_server_ip/v3/clusterregistrationtoken?clusterId=$CLUSTERID" | docker run --rm -i $jqimage -r '.data[].nodeCommand' | head -1)
 
   if [ -n "$AGENTCMD" ]; then
     break

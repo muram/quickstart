@@ -8,7 +8,7 @@ curlimage="appropriate/curl"
 jqimage="stedolan/jq"
 
 for image in $curlimage $jqimage "rancher/rancher:${rancher_version}"; do
-  until docker inspect $image > /dev/null 2>&1; do
+  until docker inspect $image >/dev/null 2>&1; do
     docker pull $image
     sleep 2
   done
@@ -25,20 +25,19 @@ done
 # Login
 while true; do
 
-    LOGINRESPONSE=$(docker run \
-        --rm \
-        --net=host \
-        $curlimage \
-        -s "https://127.0.0.1/v3-public/localProviders/local?action=login" -H 'content-type: application/json' --data-binary '{"username":"admin","password":"admin"}' --insecure)
-    LOGINTOKEN=$(echo $LOGINRESPONSE | docker run --rm -i $jqimage -r .token)
+  LOGINRESPONSE=$(docker run \
+    --rm \
+    --net=host \
+    $curlimage \
+    -s "https://127.0.0.1/v3-public/localProviders/local?action=login" -H 'content-type: application/json' --data-binary '{"username":"admin","password":"admin"}' --insecure)
+  LOGINTOKEN=$(echo $LOGINRESPONSE | docker run --rm -i $jqimage -r .token)
 
-    if [ "$LOGINTOKEN" != "null" ]; then
-        break
-    else
-        sleep 5
-    fi
+  if [ "$LOGINTOKEN" != "null" ]; then
+    break
+  else
+    sleep 5
+  fi
 done
-
 
 # Change password
 docker run --rm --net=host $curlimage -s 'https://127.0.0.1/v3/users?action=changepassword' -H 'content-type: application/json' -H "Authorization: Bearer $LOGINTOKEN" --data-binary '{"currentPassword":"admin","newPassword":"'$admin_password'"}' --insecure
@@ -47,7 +46,7 @@ docker run --rm --net=host $curlimage -s 'https://127.0.0.1/v3/users?action=chan
 APIRESPONSE=$(docker run --rm --net=host $curlimage -s 'https://127.0.0.1/v3/token' -H 'content-type: application/json' -H "Authorization: Bearer $LOGINTOKEN" --data-binary '{"type":"token","description":"automation"}' --insecure)
 
 # Extract and store token
-APITOKEN=`echo $APIRESPONSE | docker run --rm -i $jqimage -r .token`
+APITOKEN=$(echo $APIRESPONSE | docker run --rm -i $jqimage -r .token)
 
 # Configure server-url
 RANCHER_SERVER="https://${rancher_ip}"
@@ -57,7 +56,7 @@ docker run --rm --net=host $curlimage -s 'https://127.0.0.1/v3/settings/server-u
 CLUSTERRESPONSE=$(docker run --rm --net=host $curlimage -s 'https://127.0.0.1/v3/cluster' -H 'content-type: application/json' -H "Authorization: Bearer $APITOKEN" --data-binary '{"dockerRootDir":"/var/lib/docker","enableNetworkPolicy":false,"type":"cluster","rancherKubernetesEngineConfig":{"kubernetesVersion":"'$k8s_version'","addonJobTimeout":30,"ignoreDockerVersion":true,"sshAgentAuth":false,"type":"rancherKubernetesEngineConfig","authentication":{"type":"authnConfig","strategy":"x509"},"network":{"options":{"flannelBackendType":"vxlan"},"plugin":"canal","canalNetworkProvider":{"iface":"eth1"}},"ingress":{"type":"ingressConfig","provider":"nginx"},"monitoring":{"type":"monitoringConfig","provider":"metrics-server"},"services":{"type":"rkeConfigServices","kubeApi":{"podSecurityPolicy":false,"type":"kubeAPIService"},"etcd":{"creation":"12h","extraArgs":{"heartbeat-interval":500,"election-timeout":5000},"retention":"72h","snapshot":false,"type":"etcdService","backupConfig":{"enabled":true,"intervalHours":12,"retention":6,"type":"backupConfig"}}}},"localClusterAuthEndpoint":{"enabled":true,"type":"localClusterAuthEndpoint"},"name":"quickstart"}' --insecure)
 
 # Extract clusterid to use for generating the docker run command
-CLUSTERID=`echo $CLUSTERRESPONSE | docker run --rm -i $jqimage -r .id`
+CLUSTERID=$(echo $CLUSTERRESPONSE | docker run --rm -i $jqimage -r .id)
 
 # Generate registrationtoken
 docker run --rm --net=host $curlimage -s 'https://127.0.0.1/v3/clusterregistrationtoken' -H 'content-type: application/json' -H "Authorization: Bearer $APITOKEN" --data-binary '{"type":"clusterRegistrationToken","clusterId":"'$CLUSTERID'"}' --insecure
